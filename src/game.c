@@ -2,16 +2,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../include/grid.h"
-#include "../include/player.h"
-#include "../include/game.h"
-#include "../include/vt100.h"
+#include <grid.h>
+#include <player.h>
+#include <game.h>
+#include <vt100.h>
 
 #define BOOL_TO_SGN(x) (2 * !!(x) - 1)
 
-static inline void try_reveal_grid(struct game_state *p_state, unsigned row, unsigned col);
-static inline void reveal_grid_mines(struct game_state *p_state);
-static inline unsigned count_neighbors(const struct game_state *p_state, enum grid_cell_state state);
+static inline void try_reveal_grid(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col, void *_);
+static inline void reveal_grid_mines(struct grid_cell grid[GRID_DIM][GRID_DIM]);
+static inline unsigned count_neighbors(struct game_state *p_state, enum grid_cell_state state);
+static inline void reveal_if_hidden(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col, void *);
+static inline void inc_if_state_eq(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col,  void *p_counter);
 static inline unsigned max(int a, int b);
 static inline unsigned min(int a, int b);
 
@@ -43,29 +45,35 @@ void game_run(struct game_state *p_state) {
             }
             if (p_state->grid[p_player->row][p_player->col].state == GRID_STATE_REVEALED &&
                 GRID_CHK_NUMBERED_CELL(p_state->grid[p_player->row][p_player->col]) &&
-                count_neighbors(p_state, GRID_STATE_FLAGGED)) {
-                
+                count_neighbors(p_state, GRID_STATE_FLAGGED) == p_state->grid[p_player->row][p_player->col].type
+            ) {
+                grid_iter_neighbors(p_state->grid, p_player->row, p_player->col, try_reveal_grid, NULL);
             }
-            try_reveal_grid(p_state, p_player->row, p_player->col);
+            try_reveal_grid(p_state->grid, p_player->row, p_player->col, NULL);
+            break;
+        case '\x1b':
+            exit(EXIT_SUCCESS);
             break;
         }
 
-        grid_render(p_state->grid, p_player->row, p_player->col);
+        // grid_render(p_state->grid, p_player->row, p_player->col);
     }
 }
 
-static inline void try_reveal_grid(struct game_state *p_state, unsigned row, unsigned col) {
-    if (p_state->grid[row][col].state != GRID_STATE_HIDDEN)
+static inline void try_reveal_grid(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col, void *_) {
+    (void)_;
+
+    if (grid[row][col].state != GRID_STATE_HIDDEN)
         return;
     
-    if (p_state->grid[row][col].type == GRID_TYPE_MINE) {
-        reveal_grid_mines(p_state);
-        exit(EXIT_FAILURE);
+    if (grid[row][col].type == GRID_TYPE_MINE) {
+        reveal_grid_mines(grid);
+        exit(EXIT_SUCCESS);
     }
+
+    grid[row][col].state = GRID_STATE_REVEALED;
     
-    p_state->grid[row][col].state = GRID_STATE_REVEALED;
-    
-    if (p_state->grid[row][col].type != 0)
+    if (grid[row][col].type != 0)
         return;
 
     for (unsigned row_chk = max(0, (int)row - 1); row_chk < min(GRID_DIM, row + 2); ++row_chk) {
@@ -73,39 +81,52 @@ static inline void try_reveal_grid(struct game_state *p_state, unsigned row, uns
             if (row_chk == row && col_chk == col)
                 continue;
             
-            try_reveal_grid(p_state, row_chk, col_chk);
+            try_reveal_grid(grid, row_chk, col_chk, NULL);
         }
     }
 }
 
-static inline void reveal_grid_mines(struct game_state *p_state) {
+static inline void reveal_grid_mines(struct grid_cell grid[GRID_DIM][GRID_DIM]) {
     for (unsigned i = 0; i < GRID_DIM; ++i) {
         for (unsigned j = 0; j < GRID_DIM; ++j) {
-            if (p_state->grid[i][j].type == GRID_TYPE_MINE) {
-                p_state->grid[i][j].state = GRID_STATE_REVEALED;
+            if (grid[i][j].type == GRID_TYPE_MINE) {
+                grid[i][j].state = GRID_STATE_REVEALED;
             }
         }
     }
-    grid_render(p_state->grid, p_state->p_player->row, p_state->p_player->col);
+    grid_render(grid, 0, 0);
 }
 
-static inline unsigned count_neighbors(const struct game_state *p_state, enum grid_cell_state state) {
+static inline unsigned count_neighbors(struct game_state *p_state, enum grid_cell_state state) {
     const unsigned row = p_state->p_player->row;
     const unsigned col = p_state->p_player->col;
     unsigned count = 0;
 
-    for (unsigned row_chk = max(0, (int)row - 1); row_chk < min(GRID_DIM, row + 2); ++row_chk) {
-        for (unsigned col_chk = max(0, (int)col - 1); col_chk < min(GRID_DIM, col + 2); ++col_chk) {
-            if (row_chk == row && col_chk == col)
-                continue;
-            
-            if (p_state->grid[row_chk][col_chk].state == state) {
-                ++count;
-            }
-        }
-    }
+    grid_iter_neighbors(p_state->grid, row, col, inc_if_state_eq, &(struct {
+            const enum grid_cell_state state;
+            unsigned *p_counter;
+        }){state, &count});
 
     return count;
+}
+
+static inline void inc_if_state_eq(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col,  void *p_info) {
+    struct {
+        const enum grid_cell_state state;
+        unsigned *p_counter;
+    } *p_info_ = p_info;
+
+    if (grid[row][col].state == p_info_->state) {
+        ++*p_info_->p_counter;
+    }
+}
+
+static inline void reveal_if_hidden(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col, void *_) {
+    (void)_;
+
+    if (grid[row][col].state == GRID_STATE_HIDDEN) {
+        try_reveal_grid(grid, row, col, NULL);
+    }
 }
 
 static inline unsigned max(int a, int b) {

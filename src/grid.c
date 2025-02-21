@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "../include/grid.h"
-#include "../include/vt100.h"
+#include <grid.h>
+#include <vt100.h>
 
 #define MARK_GRID_UNINITIALIZED(grid) ((grid)[0][0].type = GRID_TYPE_UNINITIALIZED)
 

@@ -8,7 +8,7 @@
 #define GRID_STATE_FLAGGED_MASK 0x4
 
 #define GRID_CHK_UNINITIALIZED(grid) ((grid)[0][0].type == GRID_TYPE_UNINITIALIZED)
-#define GRID_CHK_NUMBERED_CELL(cell) ((unsigned)((cell).type) <= 9)
+#define GRID_CHK_NUMBERED_CELL(cell) ((unsigned)((cell).type - 1) <= 8)
 
 
 enum grid_cell_type {
@@ -29,7 +29,7 @@ struct grid_cell {
     enum grid_cell_state state;
 };
 
-typedef void grid_iter_fn(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col,  void *p_data);
+typedef void grid_iter_fn(struct grid_cell grid[GRID_DIM][GRID_DIM], unsigned row, unsigned col, void *p_additional_data);
 
 extern const char *const *const grid_cell_strs;
 

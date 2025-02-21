@@ -1,6 +1,6 @@
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-
-#include "../include/io.h"
+#include <io.h>
 
 #define MASK_IF(n, mask, cond) \
     ((cond) ? (n) | (mask) : ((n) & ~(mask)))
